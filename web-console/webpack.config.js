@@ -20,6 +20,7 @@ const process = require('process');
 const path = require('path');
 const postcssPresetEnv = require('postcss-preset-env');
 const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
+const webpack = require('webpack');
 
 const ALWAYS_BABEL = false;
 
@@ -38,6 +39,16 @@ module.exports = env => {
     target: druidUrl,
     secure: false,
   };
+
+  const plugins = [
+    new webpack.DefinePlugin({
+      'process.env.HEAP_APP_ID': JSON.stringify(process.env.HEAP_APP_ID),
+      'AUTH0_NAMESPACE': process.env.AUTH0_NAMESPACE
+    })
+  ];
+  if (process.env.BUNDLE_ANALYZER_PLUGIN === 'TRUE') {
+    plugins.push(new BundleAnalyzerPlugin());
+  }
 
   const mode = process.env.NODE_ENV === 'production' ? 'production' : 'development';
   console.log(`Webpack running in ${mode} mode`);
@@ -61,7 +72,7 @@ module.exports = env => {
       publicPath: '/public',
       index: './index.html',
       openPage: 'unified-console.html',
-      host: '0.0.0.0',
+      host: 'localhost',
       port: 18081,
       proxy: {
         '/status': proxyTarget,
@@ -127,6 +138,6 @@ module.exports = env => {
     performance: {
       hints: false,
     },
-    plugins: process.env.BUNDLE_ANALYZER_PLUGIN === 'TRUE' ? [new BundleAnalyzerPlugin()] : [],
+    plugins,
   };
 };

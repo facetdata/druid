@@ -27,11 +27,38 @@ import 'regenerator-runtime/runtime';
 
 import './ace-modes/dsql';
 import './ace-modes/hjson';
+import config from './auth_config.json';
 import './bootstrap/react-table-defaults';
 import { ConsoleApplication } from './console-application';
+import { Auth0Context } from './react-auth0-spa';
+import * as Auth0Provider from './react-auth0-spa';
 import { UrlBaser } from './singletons/url-baser';
 
 import './entry.scss';
+
+interface WindowWithHeap extends Window {
+  heap: {
+    load: (appId?: string, ...args: any[]) => void;
+  };
+}
+
+((window as unknown) as WindowWithHeap).heap.load(process.env.HEAP_APP_ID, {
+  forceSSL: true,
+});
+
+// A function that routes the user to the right place after login
+const onRedirectCallback = (appState: any) => {
+  // window.location.pathname is '/unified-console.html' which is the url path
+  // for this web console
+  let pathname = window.location.pathname;
+  if (appState && appState.targetUrl && appState.targetUrl.startsWith('/')) {
+    // appState.targetUrl is the hash fragment where '#' is replaced by '/' by
+    // Auth0 in the targetUrl. Ex. '/query' or '/load-data'. Replace the leading
+    // '/' with '#' for routing to work in this web console
+    pathname += `#${appState.targetUrl.slice(1)}`;
+  }
+  window.history.replaceState({}, document.title, pathname);
+};
 
 const container = document.getElementsByClassName('app-container')[0];
 if (!container) throw new Error('container not found');
@@ -62,13 +89,40 @@ if (consoleConfig.customHeaders) {
   Object.assign(axios.defaults.headers, consoleConfig.customHeaders);
 }
 
-ReactDOM.render(
-  React.createElement(ConsoleApplication, {
-    hideLegacy: Boolean(consoleConfig.hideLegacy),
-    exampleManifestsUrl: consoleConfig.exampleManifestsUrl,
-  }) as any,
-  container,
-);
+interface AuthConfig {
+  domain: string;
+  client_id: string;
+  audience: string;
+}
+
+const render = (authConfig: AuthConfig) => {
+  ReactDOM.render(
+    React.createElement(Auth0Provider.Auth0Provider, {
+      ...authConfig,
+      redirect_uri: `${window.location.origin}/unified-console.html`,
+      onRedirectCallback: onRedirectCallback,
+      children: React.createElement(Auth0Context.Consumer, {
+        children: auth0Context =>
+          React.createElement(ConsoleApplication, {
+            hideLegacy: Boolean(consoleConfig.hideLegacy),
+            exampleManifestsUrl: consoleConfig.exampleManifestsUrl,
+            auth0Context,
+          }) as any,
+      }) as any,
+    }) as any,
+    container,
+  );
+};
+
+if (process.env.NODE_ENV === 'production') {
+  const getAuthConfig = async () => {
+    const response = await axios.get('/console-resource/auth_config.json');
+    render(response.data);
+  };
+  getAuthConfig();
+} else {
+  render(config);
+}
 
 // ---------------------------------
 // Taken from https://hackernoon.com/removing-that-ugly-focus-ring-and-keeping-it-too-6c8727fefcd2

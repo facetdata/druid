@@ -113,6 +113,13 @@ exports[`header bar matches snapshot 1`] = `
   <Blueprint3.NavbarGroup
     align="right"
   >
+    <Blueprint3.Button
+      icon="log-out"
+      minimal={true}
+      onClick={[Function]}
+    >
+      Log out
+    </Blueprint3.Button>
     <Blueprint3.Popover
       boundary="scrollParent"
       captureDismiss={false}
@@ -168,34 +175,36 @@ exports[`header bar matches snapshot 1`] = `
       captureDismiss={false}
       content={
         <Blueprint3.Menu>
-          <Blueprint3.MenuItem
-            disabled={false}
-            icon="settings"
-            multiline={false}
-            onClick={[Function]}
-            popoverProps={Object {}}
-            shouldDismissPopover={true}
-            text="Coordinator dynamic config"
-          />
-          <Blueprint3.MenuItem
-            disabled={false}
-            icon="wrench"
-            multiline={false}
-            onClick={[Function]}
-            popoverProps={Object {}}
-            shouldDismissPopover={true}
-            text="Overlord dynamic config"
-          />
-          <Blueprint3.MenuItem
-            active={false}
-            disabled={false}
-            href="#lookups"
-            icon="properties"
-            multiline={false}
-            popoverProps={Object {}}
-            shouldDismissPopover={true}
-            text="Lookups"
-          />
+          <React.Fragment>
+            <Blueprint3.MenuItem
+              disabled={false}
+              icon="settings"
+              multiline={false}
+              onClick={[Function]}
+              popoverProps={Object {}}
+              shouldDismissPopover={true}
+              text="Coordinator dynamic config"
+            />
+            <Blueprint3.MenuItem
+              disabled={false}
+              icon="wrench"
+              multiline={false}
+              onClick={[Function]}
+              popoverProps={Object {}}
+              shouldDismissPopover={true}
+              text="Overlord dynamic config"
+            />
+            <Blueprint3.MenuItem
+              active={false}
+              disabled={false}
+              href="#lookups"
+              icon="properties"
+              multiline={false}
+              popoverProps={Object {}}
+              shouldDismissPopover={true}
+              text="Lookups"
+            />
+          </React.Fragment>
         </Blueprint3.Menu>
       }
       defaultIsOpen={false}

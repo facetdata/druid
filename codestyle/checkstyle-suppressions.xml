@@ -69,4 +69,8 @@
 
   <suppress checks="ImportOrder" files="[\\/]target[\\/]generated-test-sources[\\/]" />
   <suppress checks="EmptyLineSeparator" files="[\\/]target[\\/]generated-test-sources[\\/]" />
+
+  <!-- Facet specific suppressions -->
+  <suppress checks="Header" files="[\\/]extensions-facet[\\/]" />
+  <suppress checks="PackageName" files="[\\/]extensions-facet[\\/]" />
 </suppressions>

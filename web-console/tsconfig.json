@@ -18,7 +18,8 @@
     "moduleResolution": "node",
     "lib": ["dom", "es2016", "esnext"],
     "jsx": "react",
-    "rootDirs": ["lib", "src"]
+    "rootDirs": ["lib", "src"],
+    "resolveJsonModule": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.json"]
 }

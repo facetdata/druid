@@ -17,6 +17,6 @@
  */
 
 window.consoleConfig = {
-  "exampleManifestsUrl": "https://druid.apache.org/data/example-manifests.tsv"
-  /* future configs may go here */
+  "exampleManifestsUrl": "https://druid.apache.org/data/example-manifests.tsv",
+  "hideLegacy": true,
 };

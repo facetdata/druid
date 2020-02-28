@@ -35,6 +35,7 @@ import React from 'react';
 import { AboutDialog } from '../../dialogs/about-dialog/about-dialog';
 import { CoordinatorDynamicConfigDialog } from '../../dialogs/coordinator-dynamic-config-dialog/coordinator-dynamic-config-dialog';
 import { OverlordDynamicConfigDialog } from '../../dialogs/overlord-dynamic-config-dialog/overlord-dynamic-config-dialog';
+import { Auth0ContextType } from '../../react-auth0-spa';
 import {
   DRUID_ASF_SLACK,
   DRUID_DOCS,
@@ -59,6 +60,11 @@ export type HeaderActiveTab =
 export interface HeaderBarProps {
   active: HeaderActiveTab;
   hideLegacy: boolean;
+  auth0Context: Auth0ContextType | null;
+  readConfigPermission: boolean;
+  readStatePermission: boolean;
+  readDatasourcePermission: boolean;
+  writeDatasourcePermission: boolean;
 }
 
 export interface HeaderBarState {
@@ -129,7 +135,15 @@ export class HeaderBar extends React.PureComponent<HeaderBarProps, HeaderBarStat
   }
 
   render(): JSX.Element {
-    const { active, hideLegacy } = this.props;
+    const {
+      active,
+      hideLegacy,
+      auth0Context,
+      readConfigPermission,
+      readStatePermission,
+      readDatasourcePermission,
+      writeDatasourcePermission,
+    } = this.props;
     const {
       aboutDialogOpen,
       coordinatorDynamicConfigDialogOpen,
@@ -176,22 +190,26 @@ export class HeaderBar extends React.PureComponent<HeaderBarProps, HeaderBarStat
 
     const configMenu = (
       <Menu>
-        <MenuItem
-          icon={IconNames.SETTINGS}
-          text="Coordinator dynamic config"
-          onClick={() => this.setState({ coordinatorDynamicConfigDialogOpen: true })}
-        />
-        <MenuItem
-          icon={IconNames.WRENCH}
-          text="Overlord dynamic config"
-          onClick={() => this.setState({ overlordDynamicConfigDialogOpen: true })}
-        />
-        <MenuItem
-          icon={IconNames.PROPERTIES}
-          active={active === 'lookups'}
-          text="Lookups"
-          href="#lookups"
-        />
+        {readConfigPermission && (
+          <>
+            <MenuItem
+              icon={IconNames.SETTINGS}
+              text="Coordinator dynamic config"
+              onClick={() => this.setState({ coordinatorDynamicConfigDialogOpen: true })}
+            />
+            <MenuItem
+              icon={IconNames.WRENCH}
+              text="Overlord dynamic config"
+              onClick={() => this.setState({ overlordDynamicConfigDialogOpen: true })}
+            />
+            <MenuItem
+              icon={IconNames.PROPERTIES}
+              active={active === 'lookups'}
+              text="Lookups"
+              href="#lookups"
+            />
+          </>
+        )}
       </Menu>
     );
 
@@ -200,64 +218,93 @@ export class HeaderBar extends React.PureComponent<HeaderBarProps, HeaderBarStat
         <NavbarGroup align={Alignment.LEFT}>
           <a href="#">{this.renderLogo()}</a>
 
-          <NavbarDivider />
-          <AnchorButton
-            icon={IconNames.CLOUD_UPLOAD}
-            text="Load data"
-            active={active === 'load-data'}
-            href="#load-data"
-            minimal={!loadDataPrimary}
-            intent={loadDataPrimary ? Intent.PRIMARY : Intent.NONE}
-          />
+          {writeDatasourcePermission && (
+            <>
+              <NavbarDivider />
+              <AnchorButton
+                icon={IconNames.CLOUD_UPLOAD}
+                text="Load data"
+                active={active === 'load-data'}
+                href="#load-data"
+                minimal={!loadDataPrimary}
+                intent={loadDataPrimary ? Intent.PRIMARY : Intent.NONE}
+              />
+            </>
+          )}
 
-          <NavbarDivider />
-          <AnchorButton
-            minimal
-            active={active === 'datasources'}
-            icon={IconNames.MULTI_SELECT}
-            text="Datasources"
-            href="#datasources"
-          />
-          <AnchorButton
-            minimal
-            active={active === 'segments'}
-            icon={IconNames.STACKED_CHART}
-            text="Segments"
-            href="#segments"
-          />
-          <AnchorButton
-            minimal
-            active={active === 'tasks'}
-            icon={IconNames.GANTT_CHART}
-            text="Tasks"
-            href="#tasks"
-          />
-          <AnchorButton
-            minimal
-            active={active === 'servers'}
-            icon={IconNames.DATABASE}
-            text="Servers"
-            href="#servers"
-          />
+          {(readStatePermission || readDatasourcePermission) && <NavbarDivider />}
+          {readStatePermission && (
+            <AnchorButton
+              minimal
+              active={active === 'datasources'}
+              icon={IconNames.MULTI_SELECT}
+              text="Datasources"
+              href="#datasources"
+            />
+          )}
+          {readDatasourcePermission && (
+            <>
+              <AnchorButton
+                minimal
+                active={active === 'segments'}
+                icon={IconNames.STACKED_CHART}
+                text="Segments"
+                href="#segments"
+              />
+              <AnchorButton
+                minimal
+                active={active === 'tasks'}
+                icon={IconNames.GANTT_CHART}
+                text="Tasks"
+                href="#tasks"
+              />
+            </>
+          )}
+          {readStatePermission && (
+            <AnchorButton
+              minimal
+              active={active === 'servers'}
+              icon={IconNames.DATABASE}
+              text="Servers"
+              href="#servers"
+            />
+          )}
 
-          <NavbarDivider />
-          <AnchorButton
-            minimal
-            active={active === 'query'}
-            icon={IconNames.APPLICATION}
-            text="Query"
-            href="#query"
-          />
+          {readDatasourcePermission && (
+            <>
+              <NavbarDivider />
+              <AnchorButton
+                minimal
+                active={active === 'query'}
+                icon={IconNames.APPLICATION}
+                text="Query"
+                href="#query"
+              />
+            </>
+          )}
         </NavbarGroup>
         <NavbarGroup align={Alignment.RIGHT}>
+          <Button
+            minimal
+            icon={IconNames.LOG_OUT}
+            onClick={() => {
+              if (auth0Context) {
+                auth0Context.logout();
+              }
+            }}
+          >
+            Log out
+          </Button>
           {!hideLegacy && (
             <Popover content={legacyMenu} position={Position.BOTTOM_RIGHT}>
               <Button minimal icon={IconNames.SHARE} text="Legacy" />
             </Popover>
           )}
-          <Popover content={configMenu} position={Position.BOTTOM_RIGHT}>
-            <Button minimal icon={IconNames.COG} />
-          </Popover>
+          {(readStatePermission || readConfigPermission) && (
+            <Popover content={configMenu} position={Position.BOTTOM_RIGHT}>
+              <Button minimal icon={IconNames.COG} />
+            </Popover>
+          )}
           <Popover content={helpMenu} position={Position.BOTTOM_RIGHT}>
             <Button minimal icon={IconNames.HELP} />
           </Popover>

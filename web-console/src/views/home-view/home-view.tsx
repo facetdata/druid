@@ -30,21 +30,29 @@ import './home-view.scss';
 
 export interface HomeViewProps {
   noSqlMode: boolean;
+  readConfigPermission: boolean;
+  readStatePermission: boolean;
+  readDatasourcePermission: boolean;
 }
 
 export class HomeView extends React.PureComponent<HomeViewProps> {
   render(): JSX.Element {
-    const { noSqlMode } = this.props;
+    const {
+      noSqlMode,
+      readConfigPermission,
+      readStatePermission,
+      readDatasourcePermission,
+    } = this.props;
 
     return (
       <div className="home-view app-view">
-        <StatusCard />
-        <DatasourcesCard noSqlMode={noSqlMode} />
-        <SegmentsCard noSqlMode={noSqlMode} />
-        <SupervisorsCard />
-        <TasksCard noSqlMode={noSqlMode} />
-        <ServersCard noSqlMode={noSqlMode} />
-        <LookupsCard />
+        {readStatePermission && <StatusCard />}
+        {readStatePermission && <DatasourcesCard noSqlMode={noSqlMode} />}
+        {readDatasourcePermission && <SegmentsCard noSqlMode={noSqlMode} />}
+        {readDatasourcePermission && <SupervisorsCard />}
+        {readDatasourcePermission && <TasksCard noSqlMode={noSqlMode} />}
+        {readStatePermission && <ServersCard noSqlMode={noSqlMode} />}
+        {readConfigPermission && <LookupsCard />}
       </div>
     );
   }

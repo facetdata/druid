@@ -21,9 +21,10 @@ import { IconNames } from '@blueprintjs/icons';
 import axios from 'axios';
 import classNames from 'classnames';
 import React from 'react';
-import { HashRouter, Route, Switch } from 'react-router-dom';
+import { HashRouter, Switch } from 'react-router-dom';
 
-import { ExternalLink, HeaderActiveTab, HeaderBar, Loader } from './components';
+import { ExternalLink, HeaderActiveTab, HeaderBar, Loader, PrivateRoute } from './components';
+import { AUTH0_PERMISSIONS_KEY, Auth0ContextType, IdTokenWithPermissions } from './react-auth0-spa';
 import { AppToaster } from './singletons/toaster';
 import { localStorageGet, LocalStorageKeys, QueryManager } from './utils';
 import { DRUID_DOCS_API, DRUID_DOCS_SQL } from './variables';
@@ -45,11 +46,16 @@ type Capabilities = 'working-with-sql' | 'working-without-sql' | 'broken';
 export interface ConsoleApplicationProps {
   hideLegacy: boolean;
   exampleManifestsUrl?: string;
+  auth0Context: Auth0ContextType | null;
 }
 
 export interface ConsoleApplicationState {
   noSqlMode: boolean;
   capabilitiesLoading: boolean;
+  readConfigPermission: boolean;
+  readStatePermission: boolean;
+  readDatasourcePermission: boolean;
+  writeDatasourcePermission: boolean;
 }
 
 export class ConsoleApplication extends React.PureComponent<
@@ -125,6 +131,10 @@ export class ConsoleApplication extends React.PureComponent<
     this.state = {
       noSqlMode: false,
       capabilitiesLoading: true,
+      readConfigPermission: false,
+      readStatePermission: false,
+      readDatasourcePermission: false,
+      writeDatasourcePermission: false,
     };
 
     this.capabilitiesQueryManager = new QueryManager({
@@ -145,11 +155,40 @@ export class ConsoleApplication extends React.PureComponent<
   }
 
   componentDidMount(): void {
-    this.capabilitiesQueryManager.runQuery(null);
+    this.updateAuth0Context();
   }
 
   componentWillUnmount(): void {
     this.capabilitiesQueryManager.terminate();
+  }
+
+  componentDidUpdate(prevProps: ConsoleApplicationProps) {
+    if (this.props.auth0Context !== prevProps.auth0Context) {
+      this.updateAuth0Context();
+    }
+  }
+
+  private async updateAuth0Context() {
+    if (this.props.auth0Context && !this.props.auth0Context.isInitializing) {
+      const { getTokenSilently, getIdTokenClaims } = this.props.auth0Context;
+      // Add a request interceptor to add Authorization header to all axios requests
+      axios.interceptors.request.use(async config => {
+        const token = await getTokenSilently();
+        config.headers.Authorization = `Bearer ${token}`;
+
+        return config;
+      });
+      this.capabilitiesQueryManager.runQuery(null);
+
+      const claims = (await getIdTokenClaims()) as IdTokenWithPermissions;
+      const permissions = claims[AUTH0_PERMISSIONS_KEY].permissions;
+      this.setState({
+        readConfigPermission: permissions.includes('read:config:*'),
+        readStatePermission: permissions.includes('read:state:*'),
+        readDatasourcePermission: permissions.includes('read:datasource:*'),
+        writeDatasourcePermission: permissions.includes('write:datasource:*'),
+      });
+    }
   }
 
   private resetInitialsWithDelay() {
@@ -215,19 +254,46 @@ export class ConsoleApplication extends React.PureComponent<
     el: JSX.Element,
     classType: 'normal' | 'narrow-pad' = 'normal',
   ) => {
-    const { hideLegacy } = this.props;
+    const { hideLegacy, auth0Context } = this.props;
+    const {
+      readConfigPermission,
+      readStatePermission,
+      readDatasourcePermission,
+      writeDatasourcePermission,
+    } = this.state;
 
     return (
       <>
-        <HeaderBar active={active} hideLegacy={hideLegacy} />
+        <HeaderBar
+          active={active}
+          hideLegacy={hideLegacy}
+          auth0Context={auth0Context}
+          readConfigPermission={readConfigPermission}
+          readStatePermission={readStatePermission}
+          readDatasourcePermission={readDatasourcePermission}
+          writeDatasourcePermission={writeDatasourcePermission}
+        />
         <div className={classNames('view-container', classType)}>{el}</div>
       </>
     );
   };
 
   private wrappedHomeView = () => {
-    const { noSqlMode } = this.state;
-    return this.wrapInViewContainer(null, <HomeView noSqlMode={noSqlMode} />);
+    const {
+      noSqlMode,
+      readConfigPermission,
+      readStatePermission,
+      readDatasourcePermission,
+    } = this.state;
+    return this.wrapInViewContainer(
+      null,
+      <HomeView
+        noSqlMode={noSqlMode}
+        readConfigPermission={readConfigPermission}
+        readStatePermission={readStatePermission}
+        readDatasourcePermission={readDatasourcePermission}
+      />,
+    );
   };
 
   private wrappedLoadDataView = () => {
@@ -325,16 +391,16 @@ export class ConsoleApplication extends React.PureComponent<
       <HashRouter hashType="noslash">
         <div className="console-application">
           <Switch>
-            <Route path="/load-data" component={this.wrappedLoadDataView} />
-            <Route path="/query" component={this.wrappedQueryView} />
+            <PrivateRoute path="/load-data" component={this.wrappedLoadDataView} />
+            <PrivateRoute path="/query" component={this.wrappedQueryView} />
 
-            <Route path="/datasources" component={this.wrappedDatasourcesView} />
-            <Route path="/segments" component={this.wrappedSegmentsView} />
-            <Route path="/tasks" component={this.wrappedTasksView} />
-            <Route path="/servers" component={this.wrappedServersView} />
+            <PrivateRoute path="/datasources" component={this.wrappedDatasourcesView} />
+            <PrivateRoute path="/segments" component={this.wrappedSegmentsView} />
+            <PrivateRoute path="/tasks" component={this.wrappedTasksView} />
+            <PrivateRoute path="/servers" component={this.wrappedServersView} />
 
-            <Route path="/lookups" component={this.wrappedLookupsView} />
-            <Route component={this.wrappedHomeView} />
+            <PrivateRoute path="/lookups" component={this.wrappedLookupsView} />
+            <PrivateRoute component={this.wrappedHomeView} />
           </Switch>
         </div>
       </HashRouter>

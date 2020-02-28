@@ -73,7 +73,8 @@ public class RouterJettyServerInitializer implements JettyServerInitializer
       "/favicon.png",
       "/console.html",
       "/index.html",
-      "/console-config.js"
+      "/console-config.js",
+      "/console-resource/*"
   );
 
   private final DruidHttpClientConfig routerHttpClientConfig;
@@ -114,6 +115,14 @@ public class RouterJettyServerInitializer implements JettyServerInitializer
     root.setWelcomeFiles(new String[]{"unified-console.html", "index.html"});
 
     root.addServlet(new ServletHolder(new DefaultServlet()), "/*");
+    // Druid Router uses classpath resource, see below root.setBaseResource(Resource.newClassPathResource("org/apache/druid/console"));
+    // which handles only jar, when we want to serve some static files which will be available only at deployment time and not compile time
+    // then those files can be placed in <workdir>/console-resource and will be available at http://<domain>/console-resource/<file>
+    ServletHolder servlet = new ServletHolder(new DefaultServlet());
+    servlet.setInitParameter("resourceBase", "console-resource");
+    servlet.setInitParameter("dirAllowed", "false");
+    servlet.setInitParameter("pathInfoOnly", "true");
+    root.addServlet(servlet, "/console-resource/*");
 
     ServletHolder queryServletHolder = buildServletHolder(asyncQueryForwardingServlet, routerHttpClientConfig);
     root.addServlet(queryServletHolder, "/druid/v2/*");

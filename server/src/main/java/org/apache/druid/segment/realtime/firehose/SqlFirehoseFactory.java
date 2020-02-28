@@ -51,14 +51,14 @@ import java.util.Map;
 public class SqlFirehoseFactory extends PrefetchSqlFirehoseFactory<String>
 {
   @JsonProperty
-  private final List<String> sqls;
+  protected final List<String> sqls;
   @Nullable
   @JsonProperty
-  private final MetadataStorageConnectorConfig connectorConfig;
-  private final ObjectMapper objectMapper;
+  protected final MetadataStorageConnectorConfig connectorConfig;
+  protected final ObjectMapper objectMapper;
   @JsonProperty
-  private final SQLFirehoseDatabaseConnector sqlFirehoseDatabaseConnector;
-  private final boolean foldCase;
+  protected final SQLFirehoseDatabaseConnector sqlFirehoseDatabaseConnector;
+  protected final boolean foldCase;
 
   @JsonCreator
   public SqlFirehoseFactory(

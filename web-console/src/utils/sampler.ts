@@ -36,12 +36,13 @@ import {
 } from './ingestion-spec';
 import { deepGet, deepSet, whitelistKeys } from './object-change';
 
-const MS_IN_HALF_HOUR = 30 * 60 * 1000;
+const MS_IN_HOUR = 60 * 60 * 1000;
 
 const SAMPLER_URL = `/druid/indexer/v1/sampler`;
+const SAMPLER_NUM_ROWS = 500;
 const BASE_SAMPLER_CONFIG: SamplerConfig = {
   // skipCache: true,
-  numRows: 500,
+  numRows: SAMPLER_NUM_ROWS,
   timeoutMs: 15000,
 };
 
@@ -164,6 +165,30 @@ async function postToSampler(sampleSpec: SampleSpec, forStr: string): Promise<Sa
 
 export type SampleStrategy = 'start' | 'end';
 
+function getTimestampFilter(ioConfig: IoConfig) {
+  const timestampColumn = deepGet(ioConfig, 'firehose.timestampColumn');
+  if (!timestampColumn) {
+    return '';
+  }
+
+  const dateRange = deepGet(ioConfig, 'firehose.ingestionDateRange');
+  const isDateRangeSpecified = dateRange && dateRange.dateFrom && dateRange.dateTo;
+  if (isDateRangeSpecified) {
+    return `WHERE ${timestampColumn} >= '${dateRange.dateFrom}' AND ${timestampColumn} < '${dateRange.dateTo}'`;
+  }
+  return `WHERE ${timestampColumn} IS NOT NULL`;
+}
+
+function generateBigQuerySQLs(ioConfig: IoConfig) {
+  const tables = deepGet(ioConfig, 'firehose.tables');
+  const timestampFilter = getTimestampFilter(ioConfig);
+  const sqls = [];
+  for (let i = 0; i < tables.length; i++) {
+    sqls[i] = `SELECT * FROM ${tables[i]} ${timestampFilter} LIMIT ${SAMPLER_NUM_ROWS}`;
+  }
+  return sqls;
+}
+
 function makeSamplerIoConfig(
   ioConfig: IoConfig,
   samplerType: SamplerType,
@@ -174,6 +199,13 @@ function makeSamplerIoConfig(
     ioConfig = deepSet(ioConfig, 'useEarliestOffset', sampleStrategy === 'start');
   } else if (samplerType === 'kinesis') {
     ioConfig = deepSet(ioConfig, 'useEarliestSequenceNumber', sampleStrategy === 'start');
+  } else if (samplerType === 'index') {
+    const firehoseType = deepGet(ioConfig, 'firehose.type');
+    if (firehoseType !== 'bigquery') {
+      return ioConfig;
+    }
+    const sqls = generateBigQuerySQLs(ioConfig);
+    ioConfig = deepSet(ioConfig, 'firehose.sqls', sqls);
   }
   return ioConfig;
 }
@@ -199,8 +231,8 @@ export async function scopeDownIngestSegmentFirehoseIntervalIfNeeded(
   const end = new Date(intervalParts[1]);
   if (isNaN(end.valueOf())) throw new Error(`could not decode interval end`);
 
-  // Less than or equal to 1/2 hour so there is no need to adjust intervals
-  if (Math.abs(end.valueOf() - start.valueOf()) <= MS_IN_HALF_HOUR) return ioConfig;
+  // Less than or equal to 1 hour so there is no need to adjust intervals
+  if (Math.abs(end.valueOf() - start.valueOf()) <= MS_IN_HOUR) return ioConfig;
 
   const dataSourceMetadataResponse = await queryDruidRune({
     queryType: 'dataSourceMetadata',
@@ -218,7 +250,7 @@ export async function scopeDownIngestSegmentFirehoseIntervalIfNeeded(
   if (maxIngestedEventTime < start) return ioConfig;
 
   const newEnd = maxIngestedEventTime < end ? maxIngestedEventTime : end;
-  const newStart = new Date(newEnd.valueOf() - MS_IN_HALF_HOUR); // Set start to 1/2hr ago
+  const newStart = new Date(newEnd.valueOf() - MS_IN_HOUR); // Set start to 1 hour ago
 
   return deepSet(
     ioConfig,

@@ -43,6 +43,7 @@ export interface IngestionSpec {
   dataSchema: DataSchema;
   ioConfig: IoConfig;
   tuningConfig?: TuningConfig;
+  firehose?: Firehose;
 }
 
 export function isEmptyIngestionSpec(spec: IngestionSpec) {
@@ -60,7 +61,8 @@ export type IngestionComboType =
   | 'index:ingestSegment'
   | 'index:inline'
   | 'index:static-s3'
-  | 'index:static-google-blobstore';
+  | 'index:static-google-blobstore'
+  | 'index:bigquery';
 
 // Some extra values that can be selected in the initial screen
 export type IngestionComboTypeWithExtra = IngestionComboType | 'hadoop' | 'example' | 'other';
@@ -99,6 +101,7 @@ export function getIngestionComboType(spec: IngestionSpec): IngestionComboType |
         case 'inline':
         case 'static-s3':
         case 'static-google-blobstore':
+        case 'bigquery':
           return `index:${firehose.type}` as IngestionComboType;
       }
   }
@@ -125,6 +128,9 @@ export function getIngestionTitle(ingestionType: IngestionComboTypeWithExtra): s
 
     case 'index:static-google-blobstore':
       return 'Google Cloud Storage';
+
+    case 'index:bigquery':
+      return 'Google BigQuery';
 
     case 'kafka':
       return 'Apache Kafka';
@@ -159,6 +165,9 @@ export function getRequiredModule(ingestionType: IngestionComboTypeWithExtra): s
 
     case 'index:static-google-blobstore':
       return 'druid-google-extensions';
+
+    case 'index:bigquery':
+      return 'bigquery-connector';
 
     case 'kafka':
       return 'druid-kafka-indexing-service';
@@ -262,6 +271,19 @@ export function normalizeSpec(spec: Partial<IngestionSpec>): IngestionSpec {
   if (!deepGet(spec, 'ioConfig.type')) spec = deepSet(spec, 'ioConfig.type', specType);
   if (!deepGet(spec, 'tuningConfig.type')) spec = deepSet(spec, 'tuningConfig.type', specType);
   return spec as IngestionSpec;
+}
+
+export function updateBigQuerySpec(spec: IngestionSpec): IngestionSpec {
+  const firehoseType = deepGet(spec, 'ioConfig.firehose.type');
+
+  if (firehoseType === 'bigquery') {
+    const splitGranularity = deepGet(spec, 'dataSchema.granularitySpec.segmentGranularity');
+    if (splitGranularity) {
+      spec = deepSet(spec, 'ioConfig.firehose.splitGranularity', splitGranularity);
+    }
+    spec = deepSet(spec, 'ioConfig.firehose.database.connectorConfig.queryTimeout', 3600);
+  }
+  return spec;
 }
 
 const PARSE_SPEC_FORM_FIELDS: Field<ParseSpec>[] = [
@@ -588,7 +610,7 @@ export interface GranularitySpec {
   queryGranularity?: string;
   segmentGranularity?: string;
   rollup?: boolean;
-  intervals?: string;
+  intervals?: string | string[];
 }
 
 export interface MetricSpec {
@@ -751,6 +773,28 @@ export interface Firehose {
 
   // inline
   data?: string;
+
+  // bigquery
+  database?: Database;
+  tables?: string[];
+  sqls?: string[];
+  ingestionDateRange?: IngestionDateRange;
+  splitGranularity?: number;
+}
+
+export interface Database {
+  type: string;
+  connectorConfig: ConnectorConfig;
+}
+
+export interface IngestionDateRange {
+  dateFrom: string;
+  dateTo: string;
+}
+
+export interface ConnectorConfig {
+  serviceAccount: { [key: string]: string };
+  queryTimeout: number;
 }
 
 export function getIoConfigFormFields(ingestionComboType: IngestionComboType): Field<IoConfig>[] {
@@ -970,6 +1014,37 @@ export function getIoConfigFormFields(ingestionComboType: IngestionComboType): F
         },
       ];
 
+    case 'index:bigquery':
+      return [
+        {
+          name: 'firehose.database.connectorConfig.{serviceAccount}',
+          label: 'Service Account (JSON)',
+          type: 'file',
+          placeholder: 'Select file',
+        },
+        {
+          name: 'firehose.tables',
+          label: 'Table',
+          type: 'string-array',
+          placeholder: 'myDataset.myTable',
+        },
+        {
+          name: 'firehose.{timestampColumn}',
+          label: 'Timestamp column',
+          type: 'string',
+        },
+        {
+          name: 'firehose.ingestionDateRange.{dateFrom}',
+          label: 'Ingest from',
+          type: 'date',
+        },
+        {
+          name: 'firehose.ingestionDateRange.{dateTo}',
+          label: 'Ingest to',
+          type: 'date',
+        },
+      ];
+
     case 'kafka':
       return [
         {
@@ -1113,8 +1188,43 @@ function issueWithFirehose(firehose: Firehose | undefined): string | undefined {
         return 'must have at least one blob';
       }
       break;
+
+    case 'bigquery':
+      if (
+        !firehose.database ||
+        !firehose.database.connectorConfig ||
+        !firehose.database.connectorConfig.serviceAccount
+      ) {
+        return `must have a 'serviceAccount'`;
+      }
+      updateBigqueryFirehoseSQLs(firehose);
+      if (!nonEmptyArray(firehose.sqls)) return `must have at least one table`;
+      if (
+        !firehose.ingestionDateRange ||
+        !firehose.ingestionDateRange.dateFrom ||
+        !firehose.ingestionDateRange.dateTo
+      ) {
+        return `must have 'Ingestion from' and 'Ingestion to values set'`;
+      }
+      if (firehose.ingestionDateRange.dateFrom >= firehose.ingestionDateRange.dateTo) {
+        return 'Ingestion date range is invalid';
+      }
+      setFirehoseDatabaseType(firehose);
+      break;
   }
   return;
+}
+
+function updateBigqueryFirehoseSQLs(firehose: Firehose) {
+  if (firehose.type === 'bigquery' && nonEmptyArray(firehose.tables)) {
+    firehose.sqls = firehose.tables!.map(table => 'SELECT * FROM ' + table);
+  }
+}
+
+function setFirehoseDatabaseType(firehose: Firehose) {
+  if (firehose.type === 'bigquery' && firehose.database) {
+    firehose.database.type = 'bigquery';
+  }
 }
 
 export function issueWithIoConfig(ioConfig: IoConfig | undefined): string | undefined {
@@ -1147,6 +1257,7 @@ export function getIoConfigTuningFormFields(
     case 'index:http':
     case 'index:static-s3':
     case 'index:static-google-blobstore':
+    case 'index:bigquery':
       return [
         {
           name: 'firehose.fetchTimeout',
@@ -1456,16 +1567,15 @@ function basenameFromFilename(filename: string): string | undefined {
 }
 
 export function fillDataSourceNameIfNeeded(spec: IngestionSpec): IngestionSpec {
-  // Do not overwrite if the spec already has a name
-  if (deepGet(spec, 'dataSchema.dataSource')) return spec;
-  const ioConfig = deepGet(spec, 'ioConfig');
-  if (!ioConfig) return spec;
-  const possibleName = guessDataSourceName(ioConfig);
+  const possibleName = guessDataSourceName(spec);
   if (!possibleName) return spec;
   return deepSet(spec, 'dataSchema.dataSource', possibleName);
 }
 
-export function guessDataSourceName(ioConfig: IoConfig): string | undefined {
+export function guessDataSourceName(spec: IngestionSpec): string | undefined {
+  const ioConfig = deepGet(spec, 'ioConfig');
+  if (!ioConfig) return;
+
   switch (ioConfig.type) {
     case 'index':
     case 'index_parallel':
@@ -1542,11 +1652,11 @@ export interface TuningConfig {
   fetchThreads?: number;
 }
 
-export function invalidTuningConfig(tuningConfig: TuningConfig): boolean {
+export function invalidTuningConfig(tuningConfig: TuningConfig, intervals: any): boolean {
   return Boolean(
     tuningConfig.type === 'index_parallel' &&
       tuningConfig.forceGuaranteedRollup &&
-      !tuningConfig.numShards,
+      (!tuningConfig.numShards || !intervals),
   );
 }
 
@@ -1562,7 +1672,6 @@ export function getPartitionRelatedTuningSpecFormFields(
           type: 'boolean',
           info: (
             <>
-              <p>Does not currently work with parallel ingestion</p>
               <p>
                 Forces guaranteeing the perfect rollup. The perfect rollup optimizes the total size
                 of generated segments and querying time while indexing time will be increased. If
@@ -1979,6 +2088,9 @@ export function updateIngestionType(
   newSpec = deepSet(newSpec, 'ioConfig.type', ioAndTuningConfigType);
   newSpec = deepSet(newSpec, 'tuningConfig.type', ioAndTuningConfigType);
 
+  if (firehoseType === 'bigquery' && !deepGet(spec, 'tuningConfig.maxNumConcurrentSubTasks')) {
+    newSpec = deepSet(newSpec, 'tuningConfig.maxNumConcurrentSubTasks', 20);
+  }
   if (firehoseType) {
     newSpec = deepSet(newSpec, 'ioConfig.firehose', { type: firehoseType });
   }
@@ -1995,6 +2107,14 @@ export function updateIngestionType(
     };
 
     newSpec = deepSet(newSpec, 'dataSchema.granularitySpec', granularitySpec);
+
+    if (firehoseType === 'bigquery') {
+      newSpec = deepSet(
+        newSpec,
+        'ioConfig.firehose.splitGranularity',
+        granularitySpec.segmentGranularity,
+      );
+    }
   }
 
   return newSpec;
@@ -2016,6 +2136,11 @@ export function fillParser(spec: IngestionSpec, sampleData: string[]): Ingestion
 
   const parseSpec = guessParseSpec(sampleData);
   if (!parseSpec) return spec;
+
+  if (firehoseType === 'bigquery') {
+    const timestampColumn = deepGet(spec, 'ioConfig.firehose.timestampColumn');
+    parseSpec.timestampSpec = { column: timestampColumn };
+  }
 
   return deepSet(spec, 'dataSchema.parser', { type: 'string', parseSpec });
 }

@@ -50,7 +50,6 @@ import {
   Loader,
 } from '../../components';
 import { AsyncActionDialog } from '../../dialogs';
-import { ShowValueDialog } from '../../dialogs/show-value-dialog/show-value-dialog';
 import { AppToaster } from '../../singletons/toaster';
 import { UrlBaser } from '../../singletons/url-baser';
 import {
@@ -117,6 +116,7 @@ import {
   TimestampSpec,
   Transform,
   TuningConfig,
+  updateBigQuerySpec,
   updateIngestionType,
 } from '../../utils/ingestion-spec';
 import { deepDelete, deepGet, deepSet } from '../../utils/object-change';
@@ -251,8 +251,6 @@ export interface LoadDataViewState {
   showResetConfirm: boolean;
   newRollup?: boolean;
   newDimensionMode?: DimensionMode;
-  showViewValueModal: boolean;
-  str: string;
 
   // welcome
   overlordModules?: string[];
@@ -317,8 +315,6 @@ export class LoadDataView extends React.PureComponent<LoadDataViewProps, LoadDat
 
       // dialogs / modals
       showResetConfirm: false,
-      showViewValueModal: false,
-      str: '',
 
       // general
       sampleStrategy: 'start',
@@ -449,6 +445,7 @@ export class LoadDataView extends React.PureComponent<LoadDataViewProps, LoadDat
 
   private updateSpec = (newSpec: IngestionSpec) => {
     newSpec = normalizeSpec(newSpec);
+    newSpec = updateBigQuerySpec(newSpec);
     this.setState({ spec: newSpec });
     localStorageSet(LocalStorageKeys.INGESTION_SPEC, JSON.stringify(newSpec));
   };
@@ -507,7 +504,6 @@ export class LoadDataView extends React.PureComponent<LoadDataViewProps, LoadDat
         {step === 'loading' && this.renderLoading()}
 
         {this.renderResetConfirm()}
-        {this.renderViewValueModal()}
       </div>
     );
   }
@@ -632,6 +628,7 @@ export class LoadDataView extends React.PureComponent<LoadDataViewProps, LoadDat
           {this.renderIngestionCard('kinesis')}
           {this.renderIngestionCard('index:static-s3')}
           {this.renderIngestionCard('index:static-google-blobstore')}
+          {this.renderIngestionCard('index:bigquery')}
           {this.renderIngestionCard('hadoop')}
           {this.renderIngestionCard('index:ingestSegment')}
           {this.renderIngestionCard('index:http')}
@@ -648,15 +645,6 @@ export class LoadDataView extends React.PureComponent<LoadDataViewProps, LoadDat
           )}
         </div>
       </>
-    );
-  }
-
-  renderViewValueModal(): JSX.Element | undefined {
-    const { showViewValueModal, str } = this.state;
-    if (!showViewValueModal) return;
-
-    return (
-      <ShowValueDialog onClose={() => this.setState({ showViewValueModal: false })} str={str} />
     );
   }
 
@@ -719,6 +707,9 @@ export class LoadDataView extends React.PureComponent<LoadDataViewProps, LoadDat
 
       case 'index:static-google-blobstore':
         return <p>Load text based data from the Google Blobstore.</p>;
+
+      case 'index:bigquery':
+        return <p>Load data from the Google BigQuery</p>;
 
       case 'kafka':
         return <p>Load streaming data in real-time from Apache Kafka.</p>;
@@ -783,6 +774,7 @@ export class LoadDataView extends React.PureComponent<LoadDataViewProps, LoadDat
       case 'index:inline':
       case 'index:static-s3':
       case 'index:static-google-blobstore':
+      case 'index:bigquery':
       case 'kafka':
       case 'kinesis':
         return (
@@ -1126,7 +1118,13 @@ export class LoadDataView extends React.PureComponent<LoadDataViewProps, LoadDat
             } else {
               this.updateSpec(
                 fillDataSourceNameIfNeeded(
-                  fillParser(spec, inputQueryState.data.data.map(l => l.raw)),
+                  fillParser(
+                    spec,
+                    inputQueryState.data.data.map(l => {
+                      if (l.raw === undefined && l.parsed) return JSON.stringify(l.parsed);
+                      return l.raw;
+                    }),
+                  ),
                 ),
               );
             }
@@ -1225,7 +1223,6 @@ export class LoadDataView extends React.PureComponent<LoadDataViewProps, LoadDat
             )}
           </div>
           <ParseDataTable
-            openModal={str => this.setState({ showViewValueModal: true, str: str })}
             sampleData={parserQueryState.data}
             columnFilter={columnFilter}
             canFlatten={canFlatten}
@@ -2641,6 +2638,25 @@ export class LoadDataView extends React.PureComponent<LoadDataViewProps, LoadDat
             model={granularitySpec}
             onChange={g => this.updateSpec(deepSet(spec, 'dataSchema.granularitySpec', g))}
           />
+          <AutoForm
+            fields={[
+              {
+                name: 'dataSchema.granularitySpec.intervals',
+                label: 'Time intervals',
+                type: 'string-array',
+                placeholder: 'ex: 2018-01-01/2018-06-01',
+                required: s => Boolean(deepGet(s, 'tuningConfig.forceGuaranteedRollup')),
+                info: (
+                  <>
+                    A comma separated list of intervals for the raw data being ingested. Ignored for
+                    real-time ingestion.
+                  </>
+                ),
+              },
+            ]}
+            model={spec}
+            onChange={s => this.updateSpec(s)}
+          />
         </div>
         <div className="other">
           <H5>Secondary partitioning</H5>
@@ -2658,7 +2674,7 @@ export class LoadDataView extends React.PureComponent<LoadDataViewProps, LoadDat
           {this.renderParallelPickerIfNeeded()}
         </div>
         {this.renderNextBar({
-          disabled: invalidTuningConfig(tuningConfig),
+          disabled: invalidTuningConfig(tuningConfig, granularitySpec.intervals),
         })}
       </>
     );
@@ -2864,6 +2880,7 @@ export class LoadDataView extends React.PureComponent<LoadDataViewProps, LoadDat
     try {
       const resp = await axios.get(`/druid/indexer/v1/supervisor/${initSupervisorId}`);
       this.updateSpec(resp.data);
+      this.setState({ continueToSpec: true });
       this.updateStep('spec');
     } catch (e) {
       AppToaster.show({
@@ -2879,6 +2896,7 @@ export class LoadDataView extends React.PureComponent<LoadDataViewProps, LoadDat
     try {
       const resp = await axios.get(`/druid/indexer/v1/task/${initTaskId}`);
       this.updateSpec(resp.data.payload);
+      this.setState({ continueToSpec: true });
       this.updateStep('spec');
     } catch (e) {
       AppToaster.show({

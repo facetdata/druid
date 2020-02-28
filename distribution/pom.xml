@@ -18,8 +18,7 @@
   ~ under the License.
   -->
 
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <packaging>pom</packaging>
@@ -31,7 +30,7 @@
     <parent>
         <artifactId>druid</artifactId>
         <groupId>org.apache.druid</groupId>
-        <version>0.16.0-incubating-SNAPSHOT</version>
+        <version>0.16.1-incubating-SNAPSHOT</version>
     </parent>
 
     <dependencies>
@@ -170,7 +169,7 @@
                                     <executable>java</executable>
                                     <arguments>
                                         <argument>-classpath</argument>
-                                        <classpath/>
+                                        <classpath />
                                         <argument>-Ddruid.extensions.loadList=[]</argument>
                                         <argument>-Ddruid.extensions.directory=${project.build.directory}/extensions
                                         </argument>
@@ -355,7 +354,7 @@
                                     <executable>java</executable>
                                     <arguments>
                                         <argument>-classpath</argument>
-                                        <classpath/>
+                                        <classpath />
                                         <argument>-Ddruid.extensions.loadList=[]</argument>
                                         <argument>-Ddruid.extensions.directory=${project.build.directory}/extensions
                                         </argument>
@@ -418,5 +417,57 @@
                 </plugins>
             </build>
         </profile>
+        <profile>
+        <id>bundle-facet-exts</id>
+        <build>
+          <plugins>
+            <plugin>
+              <groupId>org.codehaus.mojo</groupId>
+              <artifactId>exec-maven-plugin</artifactId>
+              <executions>
+                <execution>
+                  <id>pull-deps-facet-exts</id>
+                  <phase>package</phase>
+                  <goals>
+                    <goal>exec</goal>
+                  </goals>
+                  <configuration>
+                    <executable>java</executable>
+                    <arguments>
+                      <argument>-classpath</argument>
+                      <classpath />
+                      <argument>-Ddruid.extensions.loadList=[]</argument>
+                      <argument>-Ddruid.extensions.directory=${project.build.directory}/extensions
+                      </argument>
+                      <argument>
+                        -Ddruid.extensions.hadoopDependenciesDir=${project.build.directory}/hadoop-dependencies
+                      </argument>
+                      <argument>org.apache.druid.cli.Main</argument>
+                      <argument>tools</argument>
+                      <argument>pull-deps</argument>
+                      <argument>--defaultVersion</argument>
+                      <argument>${project.parent.version}</argument>
+                      <argument>-l</argument>
+                      <argument>${settings.localRepository}</argument>
+                      <argument>--no-default-hadoop</argument>
+                      <!-- facet extensions to be put in the distribution -->
+                      <argument>-c</argument>
+                      <argument>com.facetdata:inspector</argument>
+                      <argument>-c</argument>
+                      <argument>com.facetdata:auth0-security</argument>
+                      <argument>-c</argument>
+                      <argument>com.facetdata:bigquery-connector</argument>
+                      <!-- list of contrib extensions to be bundled, append contrib extensions here
+                      instead of using bundle-contrib-exts profile which bundles all contrib extensions -->
+                      <argument>-c</argument>
+                      <argument>org.apache.druid.extensions.contrib:statsd-emitter</argument>
+                    </arguments>
+                  </configuration>
+                </execution>
+              </executions>
+            </plugin>
+          </plugins>
+        </build>
+      </profile>
     </profiles>
 </project>
